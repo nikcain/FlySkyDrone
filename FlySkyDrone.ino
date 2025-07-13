@@ -1,7 +1,7 @@
 #include <IBusBM.h>
 #include "pid.h"
-#include "MPU6050.h"
-#include <ESP32Servo.h>
+//#include "gyro.h"
+//#include <ESP32Servo.h>
 
 IBusBM IBus; 
 
@@ -14,6 +14,11 @@ const int mot1_pin = 32; // right back
 const int mot4_pin = 23; // left back
 
 int m1_drive, m2_drive, m3_drive, m4_drive;
+
+// Desired Flight Controller Cycle time
+// This is the number of times per second the flight controller will perform an adjustment loop (PID loop)
+float target_cycle_hz = 250.0;
+int cycle_time_us;
 
 void setup() {
   Serial.begin(115200);
@@ -38,9 +43,15 @@ void setup() {
   ledcAttach(mot3_pin, 12000, 8);
   ledcAttach(mot4_pin, 12000, 8);
   */
+  float cycle_time_seconds = 1.0 / target_cycle_hz;
+  pidcalc.cycle_time_seconds = cycle_time_seconds;
+  cycle_time_us = int(round(cycle_time_seconds * 1000000)); // multiply by 1,000,000 to go from seconds to microseconds (us)
 }
 
 void loop() {
+  
+  long loop_begin_us = micros();
+  
   char pitch, roll, yaw, throttle;
 
   IBus.loop();
@@ -48,21 +59,33 @@ void loop() {
   pitch = IBus.readChannel(1);
   yaw = IBus.readChannel(3);
   roll = IBus.readChannel(0);
+
+  // Values are standard 1000-2000 (1500 in centre)
+  // normalise the values for simplicity
+  throttle = (throttle - 1500) / 500.0;
+  pitch = (pitch - 1500) / 500.0;
+  yaw = (yaw - 1500) / 500.0;
+  roll = (roll - 1500) / 500.0;
   
   pidcalc.calculate(pitch, roll, yaw, throttle);
-  float pitch_PID, roll_PID, yaw_PID;
-  pidcalc.getValues(pitch_PID, roll_PID, yaw_PID);
 
-  m1_drive = (throttle + pitch_PID - roll_PID + yaw_PID > 255) ? 255 : throttle + pitch_PID - roll_PID + yaw_PID;
-  m2_drive = (throttle + pitch_PID + roll_PID - yaw_PID > 255) ? 255 : throttle + pitch_PID + roll_PID - yaw_PID;
-  m3_drive = (throttle - pitch_PID + roll_PID + yaw_PID > 255) ? 255 : throttle - pitch_PID + roll_PID + yaw_PID;
-  m4_drive = (throttle - pitch_PID - roll_PID - yaw_PID > 255) ? 255 : throttle - pitch_PID - roll_PID - yaw_PID;
-
+  // calculate throttle values
+  float t1 = throttle + pidcalc.pid_pitch + pidcalc.pid_roll - pidcalc.pid_yaw;
+  float t2 = throttle + pidcalc.pid_pitch - pidcalc.pid_roll + pidcalc.pid_yaw;
+  float t3 = throttle - pidcalc.pid_pitch + pidcalc.pid_roll + pidcalc.pid_yaw;
+  float t4 = throttle - pidcalc.pid_pitch - pidcalc.pid_roll - pidcalc.pid_yaw;
+  
   // apply PWM
-  ledcWrite(mot1_pin, m1_drive); 
-  ledcWrite(mot2_pin, m2_drive);
-  ledcWrite(mot3_pin, m3_drive);
-  ledcWrite(mot4_pin, m4_drive);
+  ledcWrite(mot1_pin, t1); 
+  ledcWrite(mot2_pin, t2);
+  ledcWrite(mot3_pin, t3);
+  ledcWrite(mot4_pin, t4);
 
-  delay(20);
+  // match expected Hz
+  int loop_end_us = micros();
+  int elapsed_us = loop_end_us - loop_begin_us;
+  if (elapsed_us < cycle_time_us)
+  {
+    delayMicroseconds(cycle_time_us - elapsed_us); 
+  }
 }

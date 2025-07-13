@@ -1,38 +1,43 @@
 #ifndef pid_h
 #define pid_h
 
-#include "MPU6050.h"
+#include "FastIMU.h"
+#include <Wire.h>
 
 class pid
 {
   public:
     void initialise();
     void calculate(int pitch_, int roll_, int yaw_, int throttle_);
-    void getValues(float& pitch_PID_, float& roll_PID_, float& yaw_PID_)
-    { pitch_PID_ = pitch_PID; roll_PID_ = roll_PID; yaw_PID_ = yaw_PID; }
+
+    float pid_pitch, pid_roll, pid_yaw;
+    float cycle_time_seconds;
 
   private:
-    mpu6050 gyro;
-    long Time, timePrev;
-    float elapsedTime;
-    float pitch_PID, roll_PID, yaw_PID;
+    MPU6050 IMU;
+    
+    // state variables (held across calculations)
+    float roll_last_integral = 0.0;
+    float roll_last_error = 0.0;
+    float pitch_last_integral = 0.0;
+    float pitch_last_error = 0.0;
+    float yaw_last_integral = 0.0;
+    float yaw_last_error = 0.0;
 
-    float angle_pitch_output, angle_roll_output, angle_yaw_output;
+    float max_rate_roll = 30.0;
+    float max_rate_pitch = 30.0;
+    float max_rate_yaw = 50.0;
 
-    float roll_error, roll_previous_error;
-    float pitch_error, pitch_previous_error;
-    float yaw_error, yaw_previous_error;
-
-    float roll_pid_p, roll_pid_d, roll_pid_i;
-    float pitch_pid_p, pitch_pid_i, pitch_pid_d;
-    float yaw_pid_p, yaw_pid_i, yaw_pid_d;
-
-    double twoX_kp = 5;      //5
-    double twoX_ki = 0.003;  //0.003
-    double twoX_kd = 1.4;    //1.4
-    double yaw_kp = 8;       //5
-    double yaw_ki = 0;       //0.005
-    double yaw_kd = 4;       //2.8
+    // PID Controller values
+    float pid_roll_kp = 0.00043714285;
+    float pid_roll_ki = 0.00255;
+    float pid_roll_kd = 0.00002571429;
+    float pid_pitch_kp = pid_roll_kp;
+    float pid_pitch_ki = pid_roll_ki;
+    float pid_pitch_kd = pid_roll_kd;
+    float pid_yaw_kp = 0.001714287;
+    float pid_yaw_ki = 0.003428571;
+    float pid_yaw_kd = 0.0;
 };
 
 
